@@ -1,0 +1,305 @@
+---
+title: "Decission Trees - Diabetes"
+author: "Sanjaya Mananage"
+output: pdf_document
+
+header-includes: 
+   - \usepackage{float}
+   - \floatplacement{figure}{H}
+   - \usepackage{caption}
+   - \captionsetup[figure]{font=scriptsize}
+   - \captionsetup[table]{font=scriptsize}
+geometry: "left=1cm,right=1cm,top=0.5cm,bottom=0.5cm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+\flushleft
+
+
+Consider the Pima Indians Diabetes Database data set([https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database](https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database)). This data set is created for prediction of whether a patient has diabetes or not. The data set contains several parameters which are considered important during the determination of diabetes. The sample size is 768 and all patients here are females at least 21 years old of Pima Indian heritage. Take Outcome as the binary response variable. I consider all predictors as quantitative variables and take all the data as training data. 
+
+For all the models I use leave-one-out cross-validation (LOOCV) to compute the estimated miss classification error rate.
+
+
+```{r echo=FALSE}
+diabetes.data<-read.csv("diabetes.csv")##Read training data set
+diabetes.data$Outcome<-as.factor(diabetes.data$Outcome)##Factor the variable Outcome
+attach(diabetes.data)## Attach the data set
+```
+
+## I fit a decision tree to the data and summarize the results
+
+```{r,echo=FALSE}
+library(tree)
+
+diabetes.tree <- tree(Outcome ~ ., data=diabetes.data)
+sumry<-summary(diabetes.tree)
+sumry
+misclass.tree(diabetes.tree)
+#predict(diabetes.tree,diabetes.data, "class")
+#cv_result <- cv.tree(diabetes.tree, K = nrow(diabetes.data),FUN = prune.misclass)
+# prune.diabetes <- prune.misclass(diabetes.tree, best = 3)
+# predict(prune.diabetes,diabetes.data, "class")
+```
+The Variables actually used in tree construction are "Glucose", "Age", "BMI", "DiabetesPedigreeFunction", "Pregnancies". There are 11 nodes and residual mean deviance is 0.8594 and miss classification error rate is 0.2057
+
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Classification tree for Admission data",  out.width = "100%"}
+# Plot the tree
+plot(diabetes.tree)
+text(diabetes.tree, pretty = 0, cex = 0.5)
+```
+
+Let $R_j$ be the partitions of the predictor space.
+
+$$
+\begin{aligned}
+R_1 &=\{X \mid Glucose < 127.5,Age < 28.5,BMI < 30.95 \} \\
+R_2 &=\{X \mid Glucose < 127.5,Age < 28.5,BMI \ge 30.95 \} \\
+R_3 &=\{X \mid Glucose < 127.5,Age \ge 28.5,BMI < 26.35  \} \\
+R_4 &=\{X \mid Glucose < 127.5,Age \ge 28.5,BMI \ge 26.35, Glucose < 99.5\} \\
+R_5 &=\{X \mid Glucose < 127.5,Age \ge 28.5,BMI \ge 26.35, Glucose \ge 99.5  ,DiabetesPedigreeFunction < 0.561\} \\
+R_6 &=\{X \mid Glucose < 127.5,Age \ge 28.5,BMI \ge 26.35, Glucose \ge 99.5  ,DiabetesPedigreeFunction \ge 0.561, Pregnancies < 6.5\} \\
+R_7 &=\{X \mid Glucose < 127.5,Age \ge 28.5,BMI \ge 26.35, Glucose \ge 99.5  ,DiabetesPedigreeFunction \ge 0.561, Pregnancies \ge 6.5 \} \\
+R_8 &=\{X \mid Glucose \ge 127.5,  BMI < 29.95,Glucose < 145.5\} \\
+R_9 &=\{X \mid Glucose \ge 127.5,  BMI < 29.95,Glucose \ge 145.5\} \\
+R_{10} &=\{X \mid Glucose \ge 127.5,  BMI \ge 29.95,Glucose < 157.5\} \\
+R_{11} &=\{X \mid Glucose \ge 127.5,  BMI \ge 29.95,Glucose \ge 157.5\} \\
+\end{aligned}
+$$
+
+```{r,echo=FALSE,warning=FALSE}
+LOOCV<-function(data){
+n<-length(data[,1])
+tree.pred.fit<-c()
+for (i in 1:n) {
+  #i=1
+  newdata<-data[-i,]
+  testdata<-data[i,]
+  fit <- tree(Outcome ~ ., newdata)
+  summary(fit)
+  tree.pred.fit[i] <- predict(fit, testdata,"class")
+}
+#tree.pred.fit<-ifelse(tree.pred.fit>=.5,0,1)
+#print(tree.pred.fit)
+  MSE<- mean((tree.pred.fit !=data$Outcome))
+  return(list(MSE=MSE,tree.pred.fit=tree.pred.fit))
+#return(tree.pred.fit)
+}
+
+test.MSE<-LOOCV(data=diabetes.data)
+pred=test.MSE$tree.pred.fit-1
+#table(test.MSE$tree.pred.fit)
+table(pred,diabetes.data$Outcome)
+```
+
+```{r}
+miss.classification_rate_a=(117+85)/768
+miss.classification_rate_a
+```
+
+The test misclassification error rate using LOOCV is 0.2630208.
+
+## I used LOOCV to determine whether pruning is helpful and determine the optimal size for the pruned tree. 
+
+```{r include=FALSE}
+set.seed(1)
+diabetes.cv <- cv.tree(diabetes.tree, FUN = prune.tree, K=10)
+best.pruned<-diabetes.cv$size[which.min(diabetes.cv$dev)]
+```
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Plot the estimated test error rate",  out.width = "100%"}
+plot(diabetes.cv$size, diabetes.cv$dev, type = "b")
+```
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Classification prune Tree for cancer data",  out.width = "100%"}
+## best pruned tree
+diabetes.prune <- prune.tree(diabetes.tree, best = 4,method = "deviance")
+
+plot(diabetes.prune)
+text(diabetes.prune, pretty = 0)
+```
+
+
+
+```{r echo=FALSE,warning=FALSE}
+set.seed(1)
+LOOCV1b<-function(data){
+  n<-length(data[,1])
+  tree.pred.fit1b<-c()
+  for (i in 1:n) {
+    newdata<-data[-i,]
+    testdata<-data[i,]
+    fit1b <- prune.tree(diabetes.tree, best = 4,method = "deviance",newdata = newdata)
+    tree.pred.fit1b[i] <- predict(fit1b, testdata,"class")
+  }
+  #tree.pred.fit1b<-ifelse(tree.pred.fit1b>=0.5,0,1)
+  MSE<- mean((tree.pred.fit1b!=data$Outcome))
+  return(list(MSE=MSE,tree.pred.fit1b=tree.pred.fit1b-1))
+}
+test.MSE1b<-LOOCV1b(data=diabetes.data)
+#test.MSE1b$tree.pred.fit1b
+table(test.MSE1b$tree.pred.fit1b,diabetes.data$Outcome)
+```
+
+```{r}
+miss.classification_rate_b=(118+57)/768
+miss.classification_rate_b
+```
+
+The pruned tree has four(4) terminal nodes(Figure 2) and the actual used variable in tree construction are "Glucose", "Age", "BMI"(See Figure 3) and are seems to be most important predictors. Using LOOCV method the miss classification error rate for pruned tree with four terminal nodes is 0.2278646. 
+
+## I use a bagging approach to analyze the data with $B = 1000$. 
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+library(randomForest)
+```
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(1)
+diabetes.bag <- randomForest(Outcome ~ ., data = diabetes.data,mtry=8 , ntree = 1000, importance = TRUE)
+importance(diabetes.bag)
+```
+```{r,echo=FALSE,fig.align="center",fig.cap="Variable importance measure for each predictor (Bagging)",  out.width = "100%"}
+varImpPlot(diabetes.bag)
+```
+
+
+```{r include=FALSE}
+set.seed(1)
+LOOCV1c<-function(data){
+  n<-length(data[,1])
+  tree.pred.fit1c<-c()
+  for (i in 1:n) {
+    newdata<-data[-i,]
+    testdata<-data[i,]
+    fit1c <- randomForest(Outcome ~ ., data = newdata,mtry=8, ntree = 1000, importance = TRUE)
+    #print( predict(fit1c, testdata))
+    tree.pred.fit1c[i] <- predict(fit1c, testdata,"class")
+  }
+  #tree.pred.fit1c<-ifelse(tree.pred.fit1c>=0.5,0,1)
+  MSE<- mean((tree.pred.fit1c!=data$Outcome))
+  return(list(MSE=MSE,tree.pred.fit1c=tree.pred.fit1c))
+}
+test.MSE1c<-LOOCV1c(data=diabetes.data)
+#test.MSE1c
+test.MSE1c$tree.pred.fit1c<-ifelse(test.MSE1c$tree.pred.fit1c==2,1,0)
+table(test.MSE1c$tree.pred.fit1c,Outcome)
+```
+
+```{r}
+miss.classification_rate_c=(103+78)/768
+miss.classification_rate_c
+```
+Using bagging approach with $B=1000$, the Node purity plot (Figure 4) shows that the variables "Glucose " and "BMI are the most important predictors. 
+
+And the misclassification error rate using LOOCV method is 0.2356771.
+
+## Use a random forest approach to analyze the data with $B = 1000$ and $m \approx p/3$. 
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(1)
+diabetes.forest <- randomForest(Outcome ~ ., data = diabetes.data,
+	mtry = 8/3, ntree = 1000, importance = TRUE)
+importance(diabetes.forest)
+```
+
+
+```{r,echo=FALSE,fig.align="center",fig.cap="Variable importance measure for each predictor (Random forest)",  out.width = "100%"}
+varImpPlot(diabetes.forest)
+```
+
+
+```{r echo=FALSE}
+set.seed(1)
+LOOCV1d<-function(data){
+n<-length(data[,1])
+tree.pred.fit1d<-c()
+for (i in 1:n) {
+  newdata<-data[-i,]
+  testdata<-data[i,]
+  fit1d <- randomForest(Outcome ~ ., data = newdata,
+	mtry = 8/3, ntree = 1000, importance = TRUE)
+  tree.pred.fit1d[i] <- predict(fit1d, testdata, type ="class")
+}
+#tree.pred.fit1d<-ifelse(tree.pred.fit1d>=0.5,1,0)
+  #MSE<- mean((tree.pred.fit1d != data$Outcome))
+  return(list(tree.pred.fit1d=tree.pred.fit1d-1))
+}
+test.MSE1d<-LOOCV1d(data=diabetes.data)
+table(test.MSE1d$tree.pred.fit1d,Outcome)
+```
+
+```{r}
+miss.classification_rate_d=(107+75)/768
+miss.classification_rate_d
+```
+
+Using random forest approach with $B=1000$ the Node purity plot (Figure 5) shows that the variables "Glucose" and "BMI"  are most important predictors. 
+
+And the miss classification error rate using LOOCV method is 0.2369792.
+
+## Use a boosting approach to analyze the data with $mfinal = 1000$ and $d = 1$.
+
+```{r, include=FALSE, warning=FALSE,message=FALSE}
+library(gbm)
+library(adabag)
+```
+
+```{r, include=FALSE}
+set.seed(1)
+
+diabetes.boost <- boosting(Outcome ~ ., data = diabetes.data, 
+                           boos = TRUE, mfinal = 1000, control = rpart.control(maxdepth = 1))
+
+# Predict using the trained model
+predictions <- predict(diabetes.boost, newdata = diabetes.data)$class
+table(predictions,diabetes.data$Outcome)
+```
+
+
+```{r,warning=FALSE}
+library(caret)
+set.seed(1)
+
+# Define the training control for cross-validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# Create the model using a boosting algorithm
+model <- train(Outcome ~ ., data = diabetes.data, method = "gbm",
+               trControl = train_control,
+               verbose = FALSE)
+
+# Get the predictions on the training data using 10-fold cross-validation
+predictions <- predict(model, newdata = diabetes.data)
+
+# Calculate the misclassification rate
+misclassification_rate <- mean(predictions != diabetes.data$Outcome)
+print("Misclassification Rate:")
+print(misclassification_rate)
+
+```
+
+Using boosting approach with $mfinal = 1000$ and $d=1$the miss classification error rate using 10-fold cross validation method is 0.2070312.
+
+## Compare the results from the various methods.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|r|r|r|r|r|r|}
+\hline
+  & un-pruned tree &  pruned tree   & bagging & random-forest  & boosting  \\
+\hline
+Miss classification error rate & 0.2630208 &   0.2278646 &   0.2356771 & 0.2369792 &  0.2070312 \\
+\hline
+\end{tabular}
+\caption{Miss classification error rate for different approches}
+\end{table}
+
+When consider the four different approaches discussed above, un-pruned tree approach gives large Miss classification error rate(0.2630208) and boosting approach gives the small Miss classification error rate(0.2070312). So boosting approach should be recommended to analyse diabetes data.
+
